@@ -1,0 +1,17 @@
+@echo off
+title Handy COntroller
+echo ==========================================
+echo    Handy Controller
+echo ==========================================
+echo.
+echo Starting server...
+echo Make sure your phone is on the same WiFi!
+echo.
+echo The server URL will appear below:
+echo Copy this URL and open it on your phone
+echo.
+echo ==========================================
+python minimal_server.py
+echo.
+echo Server stopped. Press any key to exit...
+pause > nul
