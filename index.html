@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phone Mouse & Keyboard</title>
+    <link href = "static/styles.css" rel = "stylesheet">
+</head>
+<body>
+    <div class="connection-info" id="connectionInfo">
+        Testing connection...
+    </div>
+
+    <div class="header">
+        <h1>📱 Phone Controller</h1>
+        <div class="status" id="status">Touch trackpad to move cursor</div>
+    </div>
+
+    <div class="main-content">
+        <div class="trackpad" id="trackpad">
+            <div class="trackpad-hint">
+                Move finger to control cursor<br>
+                Tap to left-click<br>
+                Double tap to double-click
+            </div>
+        </div>
+
+        <div class="keyboard-container">
+            <input type="text" class="text-input" id="textInput" placeholder="Type here and press Enter to send...">
+            
+            <div class="button-row">
+                <button class="btn" id="leftClick">Left Click</button>
+                <button class="btn" id="rightClick">Right Click</button>
+                <button class="btn" id="backspace">⌫ Backspace</button>
+            </div>
+
+            <div class="button-row">
+                <button class="btn" id="enter">↵ Enter</button>
+                <button class="btn" id="space">Space</button>
+                <button class="btn" id="tab">Tab ⇥</button>
+            </div>
+
+            <div class="button-row">
+                <button class="btn" id="escape">Esc</button>
+                <button class="btn" id="altTab">Alt+Tab</button>
+                <button class="btn" id="ctrlC">Ctrl+C</button>
+            </div>
+
+            <div class="scroll-area">
+                <button class="btn scroll-btn" id="scrollUp">↑ Scroll Up</button>
+                <button class="btn scroll-btn" id="scrollDown">↓ Scroll Down</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PhoneController {
+            constructor() {
+                this.trackpad = document.getElementById('trackpad');
+                this.textInput = document.getElementById('textInput');
+                this.status = document.getElementById('status');
+                this.connectionInfo = document.getElementById('connectionInfo');
+                
+                this.lastTouch = { x: 0, y: 0 };
+                this.isTracking = false;
+                this.lastTapTime = 0;
+                this.isConnected = false;
+                
+                this.init();
+            }
+
+            init() {
+                this.testConnection();
+                this.setupTrackpad();
+                this.setupKeyboard();
+                this.setupButtons();
+                
+                // Test connection every 30 seconds
+                setInterval(() => this.testConnection(), 30000);
+            }
+
+            async testConnection() {
+                try {
+                    const response = await fetch('/command', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({type: 'test'})
+                    });
+                    
+                    if (response.ok) {
+                        this.connectionInfo.textContent = 'Connected ✓';
+                        this.connectionInfo.style.background = 'rgba(0, 150, 0, 0.8)';
+                        this.status.textContent = 'Connected! Ready to control your computer';
+                        this.isConnected = true;
+                    } else {
+                        throw new Error('Server not responding');
+                    }
+                } catch (error) {
+                    this.connectionInfo.textContent = 'Server Offline ✗';
+                    this.connectionInfo.style.background = 'rgba(150, 0, 0, 0.8)';
+                    this.status.textContent = 'Run minimal_server.py on your laptop first';
+                    this.isConnected = false;
+                }
+            }
+
+            async sendCommand(command) {
+                if (!this.isConnected) {
+                    console.log('Not connected to server:', command);
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/command', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(command)
+                    });
+                    
+                    if (!response.ok) {
+                        console.error('Command failed:', command);
+                        this.testConnection(); // Retest connection on failure
+                    }
+                } catch (error) {
+                    console.log('Command failed (server offline):', command);
+                    this.isConnected = false;
+                    this.testConnection();
+                }
+            }
+
+            setupTrackpad() {
+                // Touch events for mobile
+                this.trackpad.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    const touch = e.touches[0];
+                    this.lastTouch = {
+                        x: touch.clientX,
+                        y: touch.clientY,
+                        time: Date.now()
+                    };
+                    this.isTracking = true;
+                });
+
+                this.trackpad.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                    if (!this.isTracking) return;
+
+                    const touch = e.touches[0];
+                    const deltaX = touch.clientX - this.lastTouch.x;
+                    const deltaY = touch.clientY - this.lastTouch.y;
+
+                    // Scale movement for better sensitivity
+                    const sensitivity = 2.5;
+                    const moveX = Math.round(deltaX * sensitivity);
+                    const moveY = Math.round(deltaY * sensitivity);
+
+                    if (Math.abs(moveX) > 0 || Math.abs(moveY) > 0) {
+                        this.sendCommand({
+                            type: 'mouse_move',
+                            x: moveX,
+                            y: moveY
+                        });
+                    }
+
+                    this.lastTouch.x = touch.clientX;
+                    this.lastTouch.y = touch.clientY;
+                });
+
+                this.trackpad.addEventListener('touchend', (e) => {
+                    e.preventDefault();
+                    this.isTracking = false;
+
+                    const now = Date.now();
+                    const touchDuration = now - this.lastTouch.time;
+
+                    // If it was a quick tap (not a drag), trigger a click
+                    if (touchDuration < 200) {
+                        const timeSinceLastTap = now - this.lastTapTime;
+                        
+                        if (timeSinceLastTap < 400) {
+                            // Double tap
+                            this.sendCommand({ type: 'double_click' });
+                        } else {
+                            // Single tap
+                            this.sendCommand({ type: 'left_click' });
+                        }
+                        
+                        this.lastTapTime = now;
+                    }
+                });
+
+                // Mouse events for desktop testing
+                this.trackpad.addEventListener('mousemove', (e) => {
+                    if (e.buttons === 1) { // Left mouse button is pressed
+                        this.sendCommand({
+                            type: 'mouse_move',
+                            x: e.movementX * 2,
+                            y: e.movementY * 2
+                        });
+                    }
+                });
+
+                this.trackpad.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.sendCommand({ type: 'left_click' });
+                });
+            }
+
+            setupKeyboard() {
+                this.textInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const text = this.textInput.value.trim();
+                        if (text) {
+                            this.sendCommand({
+                                type: 'type_text',
+                                text: text
+                            });
+                            this.textInput.value = '';
+                        }
+                    }
+                });
+
+                // Handle input changes for real-time typing (optional)
+                this.textInput.addEventListener('input', (e) => {
+                    // Uncomment below for real-time typing as you type
+                    // const lastChar = e.target.value.slice(-1);
+                    // if (lastChar) {
+                    //     this.sendCommand({
+                    //         type: 'type_text',
+                    //         text: lastChar
+                    //     });
+                    // }
+                });
+            }
+
+            setupButtons() {
+                const buttons = {
+                    'leftClick': { type: 'left_click' },
+                    'rightClick': { type: 'right_click' },
+                    'backspace': { type: 'key', key: 'backspace' },
+                    'enter': { type: 'key', key: 'return' },
+                    'space': { type: 'key', key: 'space' },
+                    'tab': { type: 'key', key: 'tab' },
+                    'escape': { type: 'key', key: 'escape' },
+                    'altTab': { type: 'key_combo', keys: ['alt', 'tab'] },
+                    'ctrlC': { type: 'key_combo', keys: ['ctrl', 'c'] },
+                    'scrollUp': { type: 'scroll', direction: 'up' },
+                    'scrollDown': { type: 'scroll', direction: 'down' }
+                };
+
+                Object.entries(buttons).forEach(([id, command]) => {
+                    const element = document.getElementById(id);
+                    if (element) {
+                        element.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            this.sendCommand(command);
+                            
+                            // Visual feedback
+                            element.style.transform = 'scale(0.95)';
+                            element.style.background = 'rgba(255, 255, 255, 0.4)';
+                            setTimeout(() => {
+                                element.style.transform = '';
+                                element.style.background = '';
+                            }, 150);
+                        });
+
+                        // Touch feedback for mobile
+                        element.addEventListener('touchstart', (e) => {
+                            e.target.style.background = 'rgba(255, 255, 255, 0.4)';
+                        });
+
+                        element.addEventListener('touchend', (e) => {
+                            setTimeout(() => {
+                                e.target.style.background = '';
+                            }, 150);
+                        });
+                    }
+                });
+            }
+        }
+
+        // Initialize the controller when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PhoneController();
+        });
+
+        // Prevent zoom and scrolling on mobile
+        document.addEventListener('touchstart', (e) => {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            // Allow scrolling only in the text input area
+            if (e.target.id !== 'textInput' && !e.target.closest('.keyboard-container')) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    </script>
+</body>
+</html>
