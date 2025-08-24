@@ -11,7 +11,7 @@ echo The server URL will appear below:
 echo Copy this URL and open it on your phone
 echo.
 echo ==========================================
-python minimal_server.py
+python server.py
 echo.
 echo Server stopped. Press any key to exit...
 pause > nul
